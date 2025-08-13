@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multipec"
+version = "0.1.0"
+description = "MultiPEC"
+readme = "README.md"
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+
+dependencies = [
+    "numpy>=1.26.0",
+    "scipy>=1.11.4",
+    "pandas>=2.2.2",
+    "scikit-learn>=1.4.2",
+    "joblib>=1.4.0",
+    "matplotlib>=3.8.0",       
+    "openpyxl>=3.1.2",         
+    "h5py>=3.10.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
