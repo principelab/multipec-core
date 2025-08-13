@@ -15,7 +15,6 @@ def process_activations(input_folder, output_folder, task_len=1000, n_epochs=5):
     preprocessed_folder = output_folder
     os.makedirs(preprocessed_folder, exist_ok=True)
 
-    path_model = os.path.join(input_folder, "model.pth")
     conv_layers = {2: 10, 3: 20}  # layer indices : number of filters; see Net() class in multipec_nets.py
 
     # Save layer activations
@@ -80,8 +79,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process CNN layer activations into binarized signals.")
     parser.add_argument("--input", required=True, help="Input folder containing CNN model and outputs.")
     parser.add_argument("--output", required=True, help="Folder where intermediate outputs are stored.")
-    parser.add_argument("--save", required=True, help="Final save path for the binarized result.")
 
     args = parser.parse_args()
 
-    process_activations(args.input, args.output, args.save)
+    process_activations(args.input, args.output)
