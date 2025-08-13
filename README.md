@@ -5,7 +5,7 @@
 #### Multi-PEC extends this approach by evaluating combinations of brain areas (nodes) and identifying the sets that collectively minimize prediction error. 
 #### As more nodes are added, the method monitors for increase in PEC, which signals that the new node no longer contributes to the data model. In this way, multi-PEC discovers functional networks automatically, guided purely by the structure of the data, rather than by researcher-imposed assumptions.
 
-<img src="data/figures/simulation/FIG2A.jpg" alt="System Diagram" width="400">
+<img src="data/figures/simulation/FIG2A.jpg" alt="System Diagram" width="500">
 
 ## Quick Start
 
