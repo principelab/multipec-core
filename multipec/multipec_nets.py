@@ -45,6 +45,12 @@ def run_multipec_analysis(file, path_load_data, path_save_data):
         "nets_05up": {s: v for s, v in sorted_pairs.items() if v > median_err + 0.5 * std_err}
     }
 
+    if path_load_data == "path/preprocessed/eeg/":
+        # EEG-specific processing
+        pair_sets = {
+            "nets_3down": {s: v for s, v in sorted_pairs.items() if v < median_err - 3 * std_err}
+        }
+
     # Shared setup
     labels = list(signal_bin.keys())
     node_signal_bin = {node: signal_bin[node] for node in labels}
