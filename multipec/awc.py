@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Aug 31 20:19:17 2018
-
-@author: ALe
-"""
-
-# pylint: disable=no-self-argument, no-member, unused-variable
-
 from multipec.core_legacy import struct, meta, table, ni
 from numpy import fromfile, unpackbits, packbits
 from multipec.data_legacy import zeros, average, record, create, binarize
