@@ -126,10 +126,60 @@ class Net(nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x, dim=-1)
     
-R = {"Subnet":[], "Subnet_ID":[], "Overall_Accuracy":[], "F1":[], "Precision":[], "Recall":[]}
-for class_id in IDX_TO_LABEL:
-    R[IDX_TO_LABEL[class_id]]=[]
 
+# Load unpruned model once and get baseline class accuracy
+_, testloader = data_loaders(trainset, testset, BATCH_SIZE_TRAIN, BATCH_SIZE_TEST)
+model = Net().to(device)
+model.load_state_dict(torch.load(MODEL_PATH))
+baseline_class_accuracies = test_accuracy_per_class(model, testloader)
+
+# Class specificity (Top2)
+def compute_top2_class_specificity(deltas: dict, class_name: str):
+    others = [abs(v) for k, v in deltas.items() if k != class_name]
+    if len(others) < 2:
+        return 0.0
+    top2 = sorted(others, reverse=True)[:2]
+    return top2[0] / (top2[1] + 1e-8)
+
+def compute_maxmean_class_specificity(deltas: dict, class_name: str):
+    others = [abs(v) for k, v in deltas.items() if k != class_name]
+    if not others:
+        return 0.0
+    max_val = max(others)
+    mean_val = sum(others) / len(others)
+    return max_val / (mean_val + 1e-8)
+
+# MultiPEC results
+class_best_top2_map = {
+    "1 - one": 4.479203,
+    "2 - two": 1.739879,
+    "3 - three": 1.753375,
+    "4 - four": 3.085540,
+    "5 - five": 1.777546,
+    "7 - seven": 1.705447,
+    "8 - eight": 3.290615,
+    "9 - nine": 3.753992
+}
+class_best_maxmean_map = {
+    "1 - one": 5.185341,
+    "2 - two": 3.364931,
+    "3 - three": 3.069058,
+    "4 - four": 4.816503,
+    "5 - five": 3.085191,
+    "7 - seven": 2.934055,
+    "8 - eight": 5.953951,
+    "9 - nine": 4.826446
+}
+
+# Track which classes have matched their target specificity
+class_success_flags = {cls: False for cls in class_best_top2_map}
+class_success_iters = {cls: None for cls in class_best_top2_map}
+
+# Track all iterations
+MAX_GLOBAL_ITERATIONS = 100
+detailed_results = []
+
+# Define random networks
 load_subnets = load(open(OUTPUT_FOLDER+f"nets.p", "rb"))
 
 min_group_size = min([len(x[0]) for x in load_subnets])
@@ -140,98 +190,94 @@ print(size_options)
 
 nodes = list(range(30))
 
-rd_runs = 100
+rd_runs = MAX_GLOBAL_ITERATIONS
 rd_subnets = [sample(nodes, choice(size_options)) for i in range(rd_runs)]
 rd_subnets = [()]+rd_subnets
 
 print(f"Net: MNIST model (2 layers)")
 print("Number of subnets:", len(rd_subnets))
 
-subnet_id = 0
-for subnet in rd_subnets:
-    print(subnet)
-    if not subnet:
+for iteration_idx, subnet in enumerate(rd_subnets):
+    if iteration_idx >= MAX_GLOBAL_ITERATIONS:
+        print("Reached global iteration limit.")
+        break
+    if all(class_success_flags.values()):
+        print("All class specificities reached!")
+        break
 
-        R["Subnet"].append(subnet)
-        R["Subnet_ID"].append(str(subnet_id))
-        print(f"Testing subnet {subnet_id}:")
-        subnet_id+=1
+    print(f"\n=== Iteration {iteration_idx + 1} ===")
+    torch.cuda.empty_cache()
+    _, testloader = data_loaders(trainset, testset, BATCH_SIZE_TRAIN, BATCH_SIZE_TEST)
 
-        torch.cuda.empty_cache()
+    # Load and optionally prune model
+    model = Net().to(device)
+    model.load_state_dict(torch.load(MODEL_PATH))
 
-        _, testloader = data_loaders(
-            trainset, testset, BATCH_SIZE_TRAIN, BATCH_SIZE_TEST)
-
-        # Load model
-        model = Net()
-        model.to(device)
-        model.load_state_dict(torch.load(MODEL_PATH))
-
-        overall_accuracy, f1, precision, recall = test_accuracy(model, testloader)
-        R["Overall_Accuracy"].append(overall_accuracy.cpu().numpy())
-        R["F1"].append(f1)
-        R["Precision"].append(precision)
-        R["Recall"].append(recall)
-
-        print('Overall accuracy of the network  '
-            f'{(overall_accuracy * 100):.2f} %\n'
-            'on the 1000 test images')
-
-        accuracy_per_class = test_accuracy_per_class(model, testloader)
-
-        print('Accuracy per class\n')
-        for classname, accuracy in accuracy_per_class.items():
-            print(f'{classname:12s} {accuracy:.2f} %')
-            R[classname].append(accuracy)      
-
-    elif len(subnet)>2:
-
-        R["Subnet"].append(subnet)
-        R["Subnet_ID"].append(str(subnet_id))
-        print(f"Testing subnet {subnet_id}:")
-        subnet_id+=1
-
-        torch.cuda.empty_cache()
-
-        _, testloader = data_loaders(
-            trainset, testset, BATCH_SIZE_TRAIN, BATCH_SIZE_TEST)
-
-        # Load model
-        model = Net()
-        model.to(device)
-        model.load_state_dict(torch.load(MODEL_PATH))
-
-        conv1_part = [node for node in subnet if node<10]
-        conv2_part = [node-10 for node in subnet if node>=10]
+    if subnet:
+        conv1_part = [node for node in subnet if node < 10]
+        conv2_part = [node - 10 for node in subnet if node >= 10]
 
         mask1 = torch.ones(model.conv1.weight.shape).to(device)
         for kernel in conv1_part:
-            mask1[kernel] = torch.zeros(model.conv1.weight.shape[1::]).to(device)
-        prune.custom_from_mask(module=model.conv1, name='weight', mask=mask1) # zero the weights (not the biases)
+            mask1[kernel] = 0
+        prune.custom_from_mask(model.conv1, 'weight', mask1)
 
         mask2 = torch.ones(model.conv2.weight.shape).to(device)
         for kernel in conv2_part:
-            mask2[kernel] = torch.zeros(model.conv2.weight.shape[1::]).to(device)
-        prune.custom_from_mask(module=model.conv2, name='weight', mask=mask2) # zero the weights (not the biases)
+            mask2[kernel] = 0
+        prune.custom_from_mask(model.conv2, 'weight', mask2)
 
-        overall_accuracy, f1, precision, recall = test_accuracy(model, testloader)
+    # Evaluate
+    overall_accuracy, f1, precision, recall = test_accuracy(model, testloader)
+    pruned_class_accuracies = test_accuracy_per_class(model, testloader)
 
-        R["Overall_Accuracy"].append(overall_accuracy.cpu().numpy())
-        R["F1"].append(f1)
-        R["Precision"].append(precision)
-        R["Recall"].append(recall)
+    # Compute Δs for all classes
+    deltas = {
+        cname: pruned_class_accuracies.get(cname, 0) - baseline_class_accuracies.get(cname, 0)
+        for cname in IDX_TO_LABEL.values()
+    }
 
-        print('Overall accuracy of the network  '
-            f'{(overall_accuracy * 100):.2f} %\n'
-            'on the 1000 test images')
+    # Compute specificity for all classes
+    specificity_per_class = {
+        cname: compute_maxmean_class_specificity(deltas, cname)
+        for cname in class_best_top2_map
+    }
 
-        accuracy_per_class = test_accuracy_per_class(model, testloader)
+    # Identify most specific class this subnet targets
+    specific_class = max(specificity_per_class, key=specificity_per_class.get)
+    spec_value = specificity_per_class[specific_class]
+    target_spec = class_best_maxmean_map[specific_class]
+    is_success = spec_value >= target_spec and not class_success_flags[specific_class]
 
-        print('Accuracy per class\n')
-        for classname, accuracy in accuracy_per_class.items():
-            print(f'{classname:12s} {accuracy:.2f} %')
-            R[classname].append(accuracy)
+    # Mark class as matched if applicable
+    if is_success:
+        class_success_flags[specific_class] = True
+        class_success_iters[specific_class] = iteration_idx + 1
+        print(f"Matched class specificity for '{specific_class}' at iteration {iteration_idx + 1} ({spec_value:.4f})")
 
-    df = pd.DataFrame(R)
-    os.makedirs(RESULTS_FOLDER, exist_ok=True)
-    df.to_excel(os.path.join(RESULTS_FOLDER, f"pruned_random_{rd_runs}runs.xlsx"))
+    # Record the iteration result
+    detailed_results.append({
+        "Iteration": iteration_idx + 1,
+        "Subnet": subnet,
+        "Specific_Class": specific_class,
+        "Specificity": spec_value,
+        "Target_Specificity": target_spec,
+        "Successful": is_success
+    })
+ 
+
+ # Save full iteration log
+detailed_df = pd.DataFrame(detailed_results)
+detailed_df.to_excel(os.path.join(RESULTS_FOLDER, "global_random_pruning_log.xlsx"), index=False)
+
+# Summary
+summary_df = pd.DataFrame([
+    {"Class": cls, "Reached": success, "Iteration": class_success_iters[cls]}
+    for cls, success in class_success_flags.items()
+])
+summary_df.to_excel(os.path.join(RESULTS_FOLDER, "class_specificity_summary.xlsx"), index=False)
+
+print("\nSummary:")
+print(summary_df)
+
+
