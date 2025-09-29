@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "MultiPEC"
 readme = "README.md"
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "Karla Ivankovic", email = "kivankovic@researchmar.net" }
 ]
-license = { text = "MIT" }
-requires-python = ">=3.8"
+license = { text = "GNU GENERAL PUBLIC LICENSE" }
+requires-python = ">=3.9"
 
 dependencies = [
     "numpy>=1.26.0",
